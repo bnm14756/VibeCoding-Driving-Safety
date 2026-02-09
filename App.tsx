@@ -49,19 +49,19 @@ const App: React.FC = () => {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const json = XLSX.utils.sheet_to_json(worksheet);
       setRawData(processCsvData(json));
-      setAiInsight(null);
+      setAiInsight(null); // 데이터 변경 시 리포트 초기화
     };
     reader.readAsArrayBuffer(file);
   };
 
   const loadDemoData = () => {
-    // 71.74회 등 기획안에 기반한 고위험군 샘플 데이터
     const demo = [
       { '차량번호': 'TS-2026-01', '운전자명': '김철수', '운행거리(km)': 1200, '운전시간(분)': 1500, '과속횟수': 350, '급가속횟수': 480, '급감속횟수': 210, '급출발횟수': 150, '법규위반횟수': 45 },
       { '차량번호': 'TS-2026-02', '운전자명': '박영희', '운행거리(km)': 2500, '운전시간(분)': 3000, '과속횟수': 120, '급가속횟수': 80, '급감속횟수': 50, '급출발횟수': 40, '법규위반횟수': 12 },
       { '차량번호': 'TS-2026-03', '운전자명': '이지영', '운행거리(km)': 800, '운전시간(분)': 1000, '과속횟수': 15, '급가속횟수': 10, '급감속횟수': 5, '급출발횟수': 5, '법규위반횟수': 2 },
     ];
     setRawData(processCsvData(demo));
+    setAiInsight(null);
   };
 
   const risks = useMemo(() => calculateRisks(rawData), [rawData]);
@@ -100,21 +100,21 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if (rawData.length > 0 && !aiInsight) {
+    if (rawData.length > 0 && !aiInsight && !isLoadingAi) {
       setIsLoadingAi(true);
       const summary = {
         totalVehicles: rawData.length,
         riskDistribution: riskDistribution.map(d => `${d.name}: ${d.value}`),
         economicImpact: economic,
         topViolations: aggregated.slice(0, 3).map(a => `${a.label}: ${a.totalCount}회`),
-        vibeCodingContext: "한국교통안전공단(TS) 공인 분석 표준 기반 능동형 안전운전 솔루션"
       };
+      // 비동기 호출 최적화
       getSafetyInsights(summary).then(res => {
         setAiInsight(res || "");
         setIsLoadingAi(false);
       });
     }
-  }, [rawData, economic, aggregated, riskDistribution, aiInsight]);
+  }, [rawData, economic, aggregated, riskDistribution, aiInsight, isLoadingAi]);
 
   return (
     <div className="min-h-screen flex flex-col selection:bg-indigo-100">
@@ -225,12 +225,14 @@ const App: React.FC = () => {
                   <Quote className="absolute top-12 left-12 w-24 h-24 text-slate-50 -z-0" />
                   <div className="relative z-10 space-y-10">
                     <div className="flex items-center gap-3 text-indigo-600 font-black text-xs uppercase tracking-[0.3em]">
-                      <BarChart3 className="w-5 h-5" /> Executive Summary
+                      <BarChart3 className="w-5 h-5" /> Executive Summary (Ultra-Fast Flash Engine)
                     </div>
                     {isLoadingAi ? (
-                      <div className="space-y-4">
-                        <div className="h-6 bg-slate-100 rounded-full w-full animate-pulse"></div>
-                        <div className="h-6 bg-slate-100 rounded-full w-5/6 animate-pulse"></div>
+                      <div className="space-y-6">
+                        <div className="h-4 bg-indigo-100 rounded-full w-full animate-pulse"></div>
+                        <div className="h-4 bg-indigo-100 rounded-full w-5/6 animate-pulse"></div>
+                        <div className="h-4 bg-indigo-100 rounded-full w-4/6 animate-pulse"></div>
+                        <p className="text-xs font-black text-indigo-400 animate-bounce">TS 분석 엔진 가동 중...</p>
                       </div>
                     ) : (
                       <div className="report-font text-2xl md:text-3xl font-medium text-slate-800 leading-relaxed whitespace-pre-wrap italic">
