@@ -33,15 +33,13 @@ export const calculateRisks = (data: DrivingData[]): CalculatedRisk[] => {
       rawScore += val * behavior.weight;
     });
 
-    // Normalize: If a driver has many violations per distance, the index increases.
-    // Safety Index calculation based on incidents per 100km, adjusted to 0.0 - 1.0 range.
     const distanceNorm = record.distanceKm > 0 ? record.distanceKm / 100 : 1;
     const safetyIndex = rawScore / distanceNorm;
 
     return {
       carNumber: record.carNumber,
       driverName: record.driverName,
-      totalScore: safetyIndex, // This will now likely be in the 0.1 ~ 0.8 range for most data
+      totalScore: safetyIndex,
       riskLevel: 'Green' as RiskLevel,
     };
   });
@@ -50,11 +48,12 @@ export const calculateRisks = (data: DrivingData[]): CalculatedRisk[] => {
   const totalCount = sorted.length;
 
   return sorted.map((risk, index) => {
-    const rankPercent = totalCount > 0 ? (index / totalCount) * 100 : 0;
+    const rankPercent = totalCount > 1 ? (index / (totalCount - 1)) * 100 : 0;
     let level: RiskLevel = 'Green';
-    // Use the prompt's 10-15% red criteria
-    if (rankPercent <= 15 || risk.totalScore > 0.4) level = 'Red';
-    else if (rankPercent <= 45 || risk.totalScore > 0.2) level = 'Yellow';
+    
+    // Improved threshold logic for clearer separation
+    if (rankPercent <= 15 || risk.totalScore > 0.35) level = 'Red';
+    else if (rankPercent <= 40 || risk.totalScore > 0.15) level = 'Yellow';
 
     return { ...risk, riskLevel: level };
   });
@@ -70,16 +69,12 @@ export const calculateEconomicImpact = (data: DrivingData[], fuelPrice: number):
       if (behavior.fuelPenalty > 0) {
         totalFuelSaved += val * behavior.fuelPenalty;
       }
-      // Vibe-Coding logic: 75 KRW per incident (average)
       if (behavior.costPerIncident > 0) {
         totalCostSaved += val * behavior.costPerIncident;
       }
     });
   });
 
-  // If cost saved by costPerIncident is significantly different from fuel savings, 
-  // we take the fuel savings as primary or combine them.
-  // Here we use fuel-based calculation for consistency but ensure it's high enough.
   const fuelCost = totalFuelSaved * fuelPrice;
   const combinedCost = Math.max(fuelCost, totalCostSaved);
 
@@ -97,15 +92,11 @@ export const getAggregatedBehaviors = (data: DrivingData[]) => {
     const behaviorKey = behaviorMapping.key as keyof DrivingData;
     const totalCount = data.reduce((sum, r) => sum + (r[behaviorKey] as number), 0);
     const avgPer100Km = totalDistance > 0 ? (totalCount / totalDistance) * 100 : 0;
-    
-    const sorted = [...data].sort((a, b) => (b[behaviorKey] as number) - (a[behaviorKey] as number));
-    const topOffender = sorted[0];
 
     return {
       label: behaviorMapping.label,
       totalCount,
-      avgPer100Km: avgPer100Km.toFixed(2),
-      topOffender: topOffender ? `${topOffender.driverName} (${topOffender.carNumber})` : 'N/A'
+      avgPer100Km: avgPer100Km.toFixed(2)
     };
   });
 };

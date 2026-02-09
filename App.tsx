@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie
@@ -7,7 +7,6 @@ import {
 import { 
   FileUp, 
   ShieldAlert, 
-  TrendingDown, 
   Download, 
   BrainCircuit,
   Table as TableIcon,
@@ -15,15 +14,15 @@ import {
   FileSpreadsheet,
   ArrowRight,
   TrendingUp,
-  Award,
-  Zap,
-  Quote,
   AlertCircle,
   BarChart3,
   Leaf,
-  Trophy,
   ShieldCheck,
-  Building2
+  Building2,
+  ChevronRight,
+  Info,
+  Users,
+  Heart
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { DrivingData } from './types.ts';
@@ -44,25 +43,32 @@ const App: React.FC = () => {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const data = new Uint8Array(event.target?.result as ArrayBuffer);
-      const workbook = XLSX.read(data, { type: 'array' });
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(worksheet);
-      setRawData(processCsvData(json));
-      setAiInsight(null); // 데이터 변경 시 리포트 초기화
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(worksheet);
+        const processed = processCsvData(json);
+        setRawData(processed);
+        setAiInsight(null);
+      } catch (err) {
+        console.error("File processing error", err);
+        alert("데이터 파일을 처리하는 중 오류가 발생했습니다.");
+      }
     };
     reader.readAsArrayBuffer(file);
   };
 
-  const loadDemoData = () => {
+  const loadDemoData = useCallback(() => {
     const demo = [
-      { '차량번호': 'TS-2026-01', '운전자명': '김철수', '운행거리(km)': 1200, '운전시간(분)': 1500, '과속횟수': 350, '급가속횟수': 480, '급감속횟수': 210, '급출발횟수': 150, '법규위반횟수': 45 },
-      { '차량번호': 'TS-2026-02', '운전자명': '박영희', '운행거리(km)': 2500, '운전시간(분)': 3000, '과속횟수': 120, '급가속횟수': 80, '급감속횟수': 50, '급출발횟수': 40, '법규위반횟수': 12 },
-      { '차량번호': 'TS-2026-03', '운전자명': '이지영', '운행거리(km)': 800, '운전시간(분)': 1000, '과속횟수': 15, '급가속횟수': 10, '급감속횟수': 5, '급출발횟수': 5, '법규위반횟수': 2 },
+      { '차량번호': 'TS-01-2026', '운전자명': '김철수', '운행거리(km)': 1580, '운전시간(분)': 1800, '과속횟수': 42, '급가속횟수': 38, '급감속횟수': 12, '급출발횟수': 25, '법규위반횟수': 5 },
+      { '차량번호': 'TS-02-2026', '운전자명': '박영희', '운행거리(km)': 2100, '운전시간(분)': 2400, '과속횟수': 12, '급가속횟수': 5, '급감속횟수': 2, '급출발횟수': 3, '법규위반횟수': 1 },
+      { '차량번호': 'TS-03-2026', '운전자명': '이지영', '운행거리(km)': 950, '운전시간(분)': 1100, '과속횟수': 5, '급가속횟수': 2, '급감속횟수': 1, '급출발횟수': 1, '법규위반횟수': 0 },
+      { '차량번호': 'TS-04-2026', '운전자명': '최민수', '운행거리(km)': 1750, '운전시간(분)': 2000, '과속횟수': 85, '급가속횟수': 92, '급감속횟수': 45, '급출발횟수': 58, '법규위반횟수': 12 },
     ];
     setRawData(processCsvData(demo));
     setAiInsight(null);
-  };
+  }, []);
 
   const risks = useMemo(() => calculateRisks(rawData), [rawData]);
   const economic = useMemo(() => calculateEconomicImpact(rawData, fuelPrice), [rawData, fuelPrice]);
@@ -72,289 +78,336 @@ const App: React.FC = () => {
     const counts = { Red: 0, Yellow: 0, Green: 0 };
     risks.forEach(r => counts[r.riskLevel]++);
     return [
-      { name: 'Red (고위험)', value: counts.Red, color: '#e11d48' },
-      { name: 'Yellow (주의)', value: counts.Yellow, color: '#f59e0b' },
-      { name: 'Green (양호)', value: counts.Green, color: '#10b981' },
+      { name: '집중관리(고위험)', value: counts.Red, color: '#dc2626' },
+      { name: '주의운전', value: counts.Yellow, color: '#f59e0b' },
+      { name: '안전운전', value: counts.Green, color: '#059669' },
     ];
   }, [risks]);
-
-  const exportToExcel = () => {
-    if (risks.length === 0) return;
-    const exportData = risks.map(risk => {
-      const driverRaw = rawData.find(d => d.carNumber === risk.carNumber);
-      return {
-        '차량번호': risk.carNumber,
-        '운전자명': risk.driverName,
-        'TS 위험도 스코어': risk.totalScore.toFixed(3),
-        '위험 등급': risk.riskLevel,
-        '운행거리(km)': driverRaw?.distanceKm || 0,
-        '급가속횟수': driverRaw?.suddenAccelCount || 0,
-        '급출발횟수': driverRaw?.suddenStartCount || 0,
-        '법규위반횟수': driverRaw?.trafficLawViolationCount || 0,
-      };
-    });
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "TS_Safety_Report");
-    XLSX.writeFile(workbook, `VibeCoding_TS_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
-  };
 
   useEffect(() => {
     if (rawData.length > 0 && !aiInsight && !isLoadingAi) {
       setIsLoadingAi(true);
       const summary = {
         totalVehicles: rawData.length,
-        riskDistribution: riskDistribution.map(d => `${d.name}: ${d.value}`),
-        economicImpact: economic,
+        riskDistribution: riskDistribution.map(d => `${d.name}: ${d.value}명`),
         topViolations: aggregated.slice(0, 3).map(a => `${a.label}: ${a.totalCount}회`),
+        economicSummary: {
+          potentialSaving: economic.costSavedKrw.toLocaleString() + '원',
+          co2Reduced: economic.co2ReducedKg.toFixed(1) + 'kg'
+        }
       };
-      // 비동기 호출 최적화
+      
       getSafetyInsights(summary).then(res => {
-        setAiInsight(res || "");
+        setAiInsight(res || "분석 결과를 도출할 수 없습니다.");
         setIsLoadingAi(false);
+      }).catch(() => {
+        setIsLoadingAi(false);
+        setAiInsight("AI 분석 엔진을 가동할 수 없습니다. 다시 시도해 주세요.");
       });
     }
   }, [rawData, economic, aggregated, riskDistribution, aiInsight, isLoadingAi]);
 
   return (
-    <div className="min-h-screen flex flex-col selection:bg-indigo-100">
-      <header className="glass-morphism border-b border-slate-200 sticky top-0 z-50 px-8 py-5 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-5">
-          <div className="bg-indigo-950 p-3 rounded-2xl shadow-lg">
-            <ShieldCheck className="text-white w-7 h-7" />
+    <div className="min-h-screen flex flex-col bg-[#f8fafc]">
+      {/* Institutional Navigation */}
+      <header className="glass-header sticky top-0 z-[100] px-8 py-5 flex items-center justify-between border-b border-slate-200/60">
+        <div className="flex items-center gap-4">
+          <div className="bg-[#003a75] p-2.5 rounded-xl shadow-md">
+            <ShieldCheck className="text-white w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-black tracking-tighter text-slate-900 leading-none">
-                VibeCoding <span className="text-indigo-600">Active</span>
+              <h1 className="text-xl font-extrabold tracking-tight text-[#0f172a]">
+                VibeCoding <span className="text-[#0054a6]">SafeDrive</span>
               </h1>
-              <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">TS Partner</span>
+              <span className="bg-blue-50 text-[#0054a6] px-2.5 py-1 rounded-md text-[10px] font-bold border border-blue-100">TS STANDARD v4.2</span>
             </div>
-            <p className="text-[10px] font-black text-slate-400 mt-1 uppercase tracking-[0.4em]">한국교통안전공단 운행기록 분석 표준 공식 준수</p>
           </div>
         </div>
         
         <div className="flex items-center gap-6">
-          <nav className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
-            <button onClick={() => setActiveTab('dashboard')} className={`px-6 py-2 rounded-xl text-sm font-black transition-all ${activeTab === 'dashboard' ? 'bg-white text-indigo-700 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>대시보드</button>
-            <button onClick={() => setActiveTab('table')} className={`px-6 py-2 rounded-xl text-sm font-black transition-all ${activeTab === 'table' ? 'bg-white text-indigo-700 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>정밀진단</button>
+          <nav className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+            <button 
+              onClick={() => setActiveTab('dashboard')} 
+              className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-white text-[#003a75] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              대시보드
+            </button>
+            <button 
+              onClick={() => setActiveTab('table')} 
+              className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'table' ? 'bg-white text-[#003a75] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              정밀 시트
+            </button>
           </nav>
         </div>
       </header>
 
-      <main className="flex-1 p-10 max-w-[1600px] mx-auto w-full space-y-16">
-        <section className="grid lg:grid-cols-12 gap-10">
-          <div className="lg:col-span-8 bg-indigo-950 p-14 rounded-[3.5rem] shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500 rounded-full blur-[150px] opacity-10"></div>
-            <div className="relative space-y-8">
-              <div className="flex gap-3">
-                <div className="bg-white/10 text-indigo-100 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 flex items-center gap-2">
-                  <Building2 className="w-3 h-3" /> 한국교통안전공단(TS) 공인
-                </div>
+      <main className="flex-1 max-w-[1440px] mx-auto w-full p-8 md:p-12 space-y-12">
+        {/* Public Enterprise Hero Section */}
+        <section className="grid lg:grid-cols-3 gap-10">
+          <div className="lg:col-span-2 bg-[#002147] rounded-[40px] p-12 text-white relative overflow-hidden shadow-2xl">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-[#0054a6] rounded-full blur-[140px] opacity-25 -mr-32 -mt-32"></div>
+            <div className="relative z-10 space-y-8">
+              <div className="inline-flex items-center gap-2.5 bg-white/5 px-4 py-1.5 rounded-full text-xs font-bold border border-white/10 uppercase tracking-widest text-blue-200">
+                <Building2 className="w-4 h-4" /> 공공기관 안전운행 전수 조사 시스템
               </div>
-              <h2 className="text-5xl md:text-6xl font-black text-white leading-tight">
-                DTG 데이터의 혁신,<br/>
-                <span className="text-indigo-400">수익형 안전운전</span>의 시작
+              <h2 className="text-4xl md:text-6xl font-black tracking-tight leading-[1.15]">
+                안전은 타협할 수 없는<br/><span className="text-blue-400">최고의 가치</span>입니다.
               </h2>
-              <p className="text-xl text-indigo-100/70 font-medium leading-relaxed max-w-2xl">
-                한국교통안전공단 표준을 기반으로 '버려지는 유류비'를 정확히 산출합니다.<br/>
-                단순 법적 의무 이행을 넘어, 기업의 실질적 이익과 ESG 성과를 창출하십시오.
+              <p className="text-slate-300 text-xl max-w-2xl font-medium leading-relaxed">
+                한국교통안전공단(TS) 표준 알고리즘을 통해 운행 데이터를 정밀 분석하고,<br/>
+                국민의 안전을 지키는 투명한 안전 경영의 표준을 제시합니다.
               </p>
-              <div className="flex flex-wrap gap-5">
-                <label className="flex items-center gap-3 bg-white text-indigo-950 px-10 py-5 rounded-3xl font-black transition-all cursor-pointer shadow-xl hover:-translate-y-1 active:scale-95">
+              <div className="flex flex-wrap gap-5 pt-6">
+                <label className="bg-white text-[#002147] px-10 py-5 rounded-2xl font-extrabold flex items-center gap-3 cursor-pointer hover:bg-blue-50 transition-all shadow-xl active:scale-95 text-lg">
                   <FileUp className="w-6 h-6" />
                   <span>데이터 분석 시작</span>
                   <input type="file" accept=".csv, .xlsx, .xls" className="hidden" onChange={handleFileUpload} />
                 </label>
-                <button onClick={loadDemoData} className="flex items-center gap-3 bg-indigo-900 text-indigo-100 border border-indigo-700 px-10 py-5 rounded-3xl font-black transition-all active:scale-95">
-                  <FileSpreadsheet className="w-6 h-6 text-emerald-400" />
-                  <span>데모 리포트 확인</span>
+                <button 
+                  onClick={loadDemoData} 
+                  className="bg-white/10 text-white px-10 py-5 rounded-2xl font-extrabold flex items-center gap-3 hover:bg-white/20 transition-all active:scale-95 border border-white/20 text-lg"
+                >
+                  <FileSpreadsheet className="w-6 h-6 text-blue-300" />
+                  <span>샘플 리포트 확인</span>
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="lg:col-span-4 space-y-10">
-            <div className="bg-white p-10 rounded-[3.5rem] border border-slate-200 shadow-xl flex flex-col justify-between h-full">
+          <div className="bg-white card-premium p-10 flex flex-col justify-between border border-slate-200/60">
+            <div className="space-y-8">
+              <h3 className="text-xl font-black flex items-center gap-3 text-slate-800 border-b border-slate-100 pb-5">
+                <TrendingUp className="w-6 h-6 text-[#0054a6]" /> 운행 분석 기준
+              </h3>
               <div className="space-y-6">
-                <h3 className="text-xl font-black text-slate-800 flex items-center gap-3">
-                  <TrendingUp className="w-6 h-6 text-indigo-600" /> 전략 전환 (As-Is → To-Be)
-                </h3>
-                <div className="space-y-4">
-                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                    <div className="text-[9px] font-black text-slate-400 mb-1 uppercase tracking-widest">As-Is</div>
-                    <p className="text-xs font-bold text-slate-500">법적 의무를 위한 단순 자료 제출</p>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 shadow-md">
-                    <div className="text-[9px] font-black text-indigo-400 mb-1 uppercase tracking-widest">To-Be</div>
-                    <p className="text-sm font-black text-indigo-900 italic">수익 개선 및 ESG 경영 자산화</p>
+                <div className="space-y-3">
+                  <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest">분석 유가 기준 (L/₩)</p>
+                  <div className="relative">
+                    <input 
+                      type="number" 
+                      value={fuelPrice} 
+                      onChange={(e) => setFuelPrice(Number(e.target.value))} 
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-6 py-4 text-2xl font-black text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                    />
+                    <span className="absolute right-6 top-5 text-slate-300 font-bold">₩</span>
                   </div>
                 </div>
-              </div>
-              <div className="mt-8 pt-8 border-t border-slate-100">
-                <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest">현재 유류 단가 (₩/L)</label>
-                <div className="relative">
-                  <input type="number" value={fuelPrice} onChange={(e) => setFuelPrice(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none text-2xl font-black text-slate-900 transition-all" />
-                  <span className="absolute right-6 top-4 text-slate-300 font-black text-xl">₩</span>
+                <div className="flex items-start gap-3 bg-blue-50/60 p-5 rounded-2xl border border-blue-100/50">
+                  <Heart className="w-5 h-5 text-[#0054a6] flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-[#1e3a8a] font-bold leading-relaxed">
+                    본 시스템은 안전운전 유도를 통해 유류 낭비를 줄이고, 
+                    절감된 비용을 사회적 가치 실현에 재투자하는 모델을 지향합니다.
+                  </p>
                 </div>
               </div>
+            </div>
+            <div className="text-[10px] font-bold text-slate-400 text-center mt-6">
+              ※ 한국교통안전공단(TS) 11대 위험운전 항목 가중치 적용
             </div>
           </div>
         </section>
 
-        {rawData.length > 0 && (
-          <div className="space-y-16 animate-in fade-in slide-in-from-bottom-10 duration-1000">
-            <div className="bg-white strategic-shadow rounded-[4rem] overflow-hidden border border-slate-100">
-              <div className="bg-slate-900 px-12 py-12 flex flex-col md:flex-row items-center justify-between gap-8">
+        {rawData.length > 0 ? (
+          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-5 duration-700">
+            
+            {/* Professional AI Strategy Report */}
+            <div className="card-premium overflow-hidden border-none shadow-xl">
+              <div className="bg-gradient-to-r from-[#003a75] to-[#0054a6] px-10 py-10 flex flex-col md:flex-row items-center justify-between gap-8">
                 <div className="flex items-center gap-6">
-                  <div className="bg-gradient-to-br from-indigo-500 to-indigo-800 p-5 rounded-3xl shadow-2xl">
-                    <BrainCircuit className="w-12 h-12 text-white" />
+                  <div className="bg-white/10 p-4 rounded-2xl backdrop-blur-md border border-white/20">
+                    <BrainCircuit className="w-10 h-10 text-blue-100" />
                   </div>
                   <div>
-                    <h3 className="text-3xl font-black text-white tracking-tight">TS 표준 AI 심층 전략 리포트</h3>
-                    <p className="text-indigo-400 text-[10px] font-black uppercase tracking-[0.5em] mt-2">Korea Transportation Safety Authority Certified</p>
+                    <h3 className="text-2xl font-black text-white">TS 표준 AI 안전 경영 전략 리포트</h3>
+                    <p className="text-blue-100/70 text-sm font-bold mt-1 tracking-wide">AI-Powered Safety Governance Insight</p>
                   </div>
                 </div>
-                <button onClick={exportToExcel} className="bg-emerald-500 hover:bg-emerald-600 text-white px-10 py-4 rounded-2xl font-black transition-all flex items-center gap-3 shadow-xl">
-                  <Download className="w-5 h-5" /> 보고서(XLSX) 다운로드
+                <button 
+                  onClick={() => alert("현재 고도화 작업 중입니다.")}
+                  className="bg-white text-[#003a75] px-8 py-3.5 rounded-xl font-black text-sm transition-all hover:bg-blue-50 flex items-center gap-2.5 shadow-lg"
+                >
+                  <Download className="w-5 h-5" /> 보고서 내보내기
                 </button>
               </div>
 
-              <div className="grid lg:grid-cols-12">
-                <div className="lg:col-span-8 p-12 md:p-20 border-r border-slate-100 relative">
-                  <Quote className="absolute top-12 left-12 w-24 h-24 text-slate-50 -z-0" />
+              <div className="grid lg:grid-cols-3">
+                <div className="lg:col-span-2 p-12 md:p-16 relative bg-white">
+                  <QuoteIcon className="absolute top-12 left-12 w-28 h-28 text-slate-50 -z-0" />
                   <div className="relative z-10 space-y-10">
-                    <div className="flex items-center gap-3 text-indigo-600 font-black text-xs uppercase tracking-[0.3em]">
-                      <BarChart3 className="w-5 h-5" /> Executive Summary (Ultra-Fast Flash Engine)
+                    <div className="flex items-center gap-3 text-[#0054a6] font-black text-[11px] uppercase tracking-[0.3em]">
+                      <BarChart3 className="w-5 h-5" /> Safety First Executive Summary
                     </div>
                     {isLoadingAi ? (
                       <div className="space-y-6">
-                        <div className="h-4 bg-indigo-100 rounded-full w-full animate-pulse"></div>
-                        <div className="h-4 bg-indigo-100 rounded-full w-5/6 animate-pulse"></div>
-                        <div className="h-4 bg-indigo-100 rounded-full w-4/6 animate-pulse"></div>
-                        <p className="text-xs font-black text-indigo-400 animate-bounce">TS 분석 엔진 가동 중...</p>
+                        <div className="h-5 bg-slate-50 rounded-full w-full animate-pulse"></div>
+                        <div className="h-5 bg-slate-50 rounded-full w-5/6 animate-pulse"></div>
+                        <div className="h-5 bg-slate-50 rounded-full w-4/6 animate-pulse"></div>
+                        <div className="flex items-center gap-3 pt-4">
+                          <div className="w-2.5 h-2.5 bg-[#0054a6] rounded-full animate-bounce"></div>
+                          <span className="text-sm font-bold text-[#0054a6] italic">공공기관 안전 분석 기준 데이터 검정 중...</span>
+                        </div>
                       </div>
                     ) : (
-                      <div className="report-font text-2xl md:text-3xl font-medium text-slate-800 leading-relaxed whitespace-pre-wrap italic">
+                      <div className="text-2xl md:text-3xl font-medium text-slate-800 leading-[1.7] tracking-tight whitespace-pre-wrap italic">
                         {aiInsight}
                       </div>
                     )}
                   </div>
                 </div>
-
-                <div className="lg:col-span-4 bg-slate-50/50 p-12 space-y-12">
-                   <div className="space-y-10">
-                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-4">핵심 성과 지표 (KPI)</h4>
-                      <div className="grid gap-10">
-                        <div>
-                          <p className="text-xs font-black text-slate-500 mb-2">총 절감 가능 유류비</p>
-                          <div className="text-5xl font-black text-indigo-700 tracking-tighter tabular-nums">₩{economic.costSavedKrw.toLocaleString()}</div>
-                        </div>
-                        <div>
-                          <p className="text-xs font-black text-slate-500 mb-2">탄소 저감 성과 (ESG)</p>
-                          <div className="text-5xl font-black text-emerald-600 tabular-nums">{economic.co2ReducedKg.toFixed(0)} <span className="text-lg">kg</span></div>
-                        </div>
-                        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                           <div className="text-[9px] font-black text-rose-600 mb-3 uppercase tracking-widest flex items-center gap-2">
-                             <AlertCircle className="w-3 h-3" /> 고위험군 집중 관리
-                           </div>
-                           <div className="text-4xl font-black text-slate-900">{riskDistribution.find(d => d.name.includes('Red'))?.value || 0} <span className="text-lg text-slate-400">명</span></div>
-                           <p className="text-[10px] font-bold text-slate-500 mt-2 italic">상위 15% 운전자 대상 즉시 교육 필요</p>
-                        </div>
-                      </div>
-                   </div>
+                <div className="bg-[#fcfcfd] p-12 space-y-12 border-l border-slate-100">
+                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-200 pb-5">데이터 요약 (Key Metrics)</h4>
+                  <div className="space-y-12">
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-slate-500">탄소 배출 저감 성과</p>
+                      <div className="text-5xl font-black text-[#059669] tracking-tighter tabular-nums">{economic.co2ReducedKg.toFixed(1)} <span className="text-xl font-bold text-slate-300">kg</span></div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-slate-500">불필요 연료 소모액</p>
+                      <div className="text-5xl font-black text-slate-900 tracking-tighter tabular-nums">₩{economic.costSavedKrw.toLocaleString()}</div>
+                    </div>
+                    <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex items-start gap-4">
+                       <div className="bg-red-50 p-2.5 rounded-xl">
+                         <AlertCircle className="w-6 h-6 text-red-600" />
+                       </div>
+                       <div>
+                         <p className="text-xs font-bold text-slate-500 uppercase">집중 관리 대상자</p>
+                         <div className="text-3xl font-black text-slate-900 mt-1">{riskDistribution.find(d => d.name.includes('집중관리'))?.value || 0} <span className="text-base text-slate-400 font-bold">명</span></div>
+                       </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
             {activeTab === 'dashboard' ? (
-              <div className="grid lg:grid-cols-2 gap-12">
-                <div className="bg-white p-12 rounded-[4rem] shadow-xl border border-slate-100">
-                  <div className="flex items-center gap-5 mb-12">
-                    <div className="p-3 bg-rose-50 rounded-2xl"><ShieldAlert className="w-8 h-8 text-rose-500" /></div>
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">TS 신호등 진단 현황</h2>
+              <div className="grid lg:grid-cols-2 gap-10">
+                {/* Visual Chart: Risk Distribution */}
+                <div className="bg-white card-premium p-12">
+                  <div className="flex items-center justify-between mb-12">
+                    <h3 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                      <ShieldAlert className="w-7 h-7 text-red-600" /> 안전도 신호등 진단
+                    </h3>
                   </div>
-                  <div className="flex flex-col md:flex-row items-center gap-10">
-                    <div className="h-[350px] w-full">
+                  <div className="h-[380px] w-full flex flex-col md:flex-row items-center gap-10">
+                    <div className="w-full h-full">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Pie data={riskDistribution} innerRadius={90} outerRadius={130} paddingAngle={12} dataKey="value" stroke="none">
+                          <Pie 
+                            data={riskDistribution} 
+                            innerRadius={90} 
+                            outerRadius={130} 
+                            paddingAngle={10} 
+                            dataKey="value" 
+                            stroke="none"
+                          >
                             {riskDistribution.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
                           </Pie>
-                          <Tooltip contentStyle={{ borderRadius: '2rem', border: 'none', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.1)', padding: '1.5rem', fontWeight: 'bold' }} />
+                          <Tooltip 
+                            contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', padding: '16px' }} 
+                          />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
-                    <div className="w-full space-y-6">
+                    <div className="w-full space-y-5">
                       {riskDistribution.map(item => (
-                        <div key={item.name} className="flex items-center justify-between p-6 bg-slate-50/50 rounded-3xl border border-slate-100">
+                        <div key={item.name} className="flex items-center justify-between p-5 bg-slate-50 rounded-2xl border border-slate-100">
                           <div className="flex items-center gap-4">
-                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: item.color }}></div>
-                            <span className="font-black text-slate-700">{item.name}</span>
+                            <div className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: item.color }}></div>
+                            <span className="font-extrabold text-slate-700 text-sm">{item.name}</span>
                           </div>
-                          <div className="text-2xl font-black text-slate-900">{item.value}<span className="text-sm ml-1 text-slate-400">건</span></div>
+                          <div className="text-2xl font-black text-slate-900">{item.value}<span className="text-xs ml-1.5 text-slate-400 font-bold">명</span></div>
                         </div>
                       ))}
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-white p-12 rounded-[4rem] shadow-xl border border-slate-100">
-                  <div className="flex items-center gap-5 mb-12">
-                    <div className="p-3 bg-indigo-50 rounded-2xl"><BarChart3 className="w-8 h-8 text-indigo-600" /></div>
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">11대 위험운전 전수 조사</h2>
+                {/* Visual Chart: Behavior Analysis */}
+                <div className="bg-white card-premium p-12">
+                  <div className="flex items-center justify-between mb-12">
+                    <h3 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                      <BarChart3 className="w-7 h-7 text-[#0054a6]" /> 11대 위험운전 전수조사
+                    </h3>
                   </div>
-                  <div className="h-[400px]">
+                  <div className="h-[380px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={aggregated} layout="vertical" margin={{ left: 30 }}>
+                      <BarChart data={aggregated} layout="vertical" margin={{ left: 10 }}>
                         <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                         <XAxis type="number" hide />
-                        <YAxis dataKey="label" type="category" width={140} tick={{ fontSize: 16, fontWeight: 900, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                        <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '2rem', border: 'none', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.1)', padding: '1.5rem' }} />
-                        <Bar dataKey="totalCount" fill="url(#behaviorGradient)" radius={[0, 15, 15, 0]} barSize={28} />
-                        <defs><linearGradient id="behaviorGradient" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#1e1b4b" /><stop offset="100%" stopColor="#4f46e5" /></linearGradient></defs>
+                        <YAxis 
+                          dataKey="label" 
+                          type="category" 
+                          width={90} 
+                          tick={{ fontSize: 14, fontWeight: 800, fill: '#64748b' }} 
+                          axisLine={false} 
+                          tickLine={false} 
+                        />
+                        <Tooltip 
+                          cursor={{ fill: '#f8fafc' }} 
+                          contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }} 
+                        />
+                        <Bar 
+                          dataKey="totalCount" 
+                          fill="#003a75" 
+                          radius={[0, 10, 10, 0]} 
+                          barSize={24} 
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-[4rem] shadow-2xl border border-slate-100 overflow-hidden">
-                <div className="p-12 bg-slate-50/50 border-b border-slate-100">
-                  <h2 className="text-3xl font-black text-slate-900 flex items-center gap-4"><TableIcon className="w-10 h-10 text-indigo-600" /> TS 표준 정밀 진단 시트</h2>
+              /* Administrative Diagnostic Sheet */
+              <div className="bg-white card-premium overflow-hidden border-none shadow-2xl">
+                <div className="px-12 py-10 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
+                  <h3 className="text-2xl font-bold text-slate-800 flex items-center gap-4">
+                    <TableIcon className="w-7 h-7 text-[#0054a6]" /> 정밀 분석 로우데이터 (Raw Data)
+                  </h3>
+                  <div className="bg-white px-5 py-2 rounded-xl text-xs font-black text-slate-400 border border-slate-200 shadow-sm">
+                    전체 분석 차량: {risks.length} 대
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
                     <thead>
-                      <tr className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
-                        <th className="px-12 py-8">운전자 정보</th>
-                        <th className="px-12 py-8">위험도 스코어 (100km당)</th>
-                        <th className="px-12 py-8">핵심 관리 위반</th>
+                      <tr className="bg-slate-50/80 text-slate-400 text-[11px] font-black uppercase tracking-[0.2em] border-b border-slate-100">
+                        <th className="px-12 py-8">차량 및 성명</th>
+                        <th className="px-12 py-8">안전도 지수 (100km당)</th>
+                        <th className="px-12 py-8">주요 위반 항목</th>
                         <th className="px-12 py-8 text-center">안전 등급</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {risks.map((risk) => {
                         const driverRaw = rawData.find(d => d.carNumber === risk.carNumber);
-                        const topOff = BEHAVIOR_MAPPING.map(b => ({ label: b.label, count: driverRaw ? (driverRaw[b.key as keyof DrivingData] as number) : 0 })).sort((a, b) => b.count - a.count)[0];
+                        const topViolation = BEHAVIOR_MAPPING
+                          .map(b => ({ label: b.label, count: driverRaw ? (driverRaw[b.key as keyof DrivingData] as number) : 0 }))
+                          .sort((a, b) => b.count - a.count)[0];
                         return (
-                          <tr key={risk.carNumber} className="hover:bg-indigo-50/30 transition-all group">
+                          <tr key={risk.carNumber} className="hover:bg-blue-50/20 transition-all group">
                             <td className="px-12 py-10">
-                              <div className="font-black text-2xl text-slate-900">{risk.driverName}</div>
-                              <div className="text-xs font-bold text-slate-400 uppercase">{risk.carNumber}</div>
+                              <div className="font-extrabold text-xl text-slate-900 group-hover:text-[#0054a6] transition-colors">{risk.driverName}</div>
+                              <div className="text-sm font-bold text-slate-400 mt-1">{risk.carNumber}</div>
                             </td>
                             <td className="px-12 py-10">
-                              <div className="text-5xl font-black text-slate-800 tracking-tighter tabular-nums">{risk.totalScore.toFixed(3)}</div>
+                              <div className="text-4xl font-black text-slate-800 tracking-tighter tabular-nums">{risk.totalScore.toFixed(3)}</div>
                             </td>
                             <td className="px-12 py-10">
                               <div className="flex items-center gap-4">
-                                <span className="text-lg font-black text-slate-700">{topOff.label}</span>
-                                <span className="px-4 py-1.5 bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase">{topOff.count}회 위반</span>
+                                <span className="text-base font-extrabold text-slate-700">{topViolation.label}</span>
+                                <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-black">{topViolation.count}회 감지</span>
                               </div>
                             </td>
                             <td className="px-12 py-10 text-center">
-                              <span className={`px-10 py-4 rounded-[2rem] text-sm font-black shadow-lg ${risk.riskLevel === 'Red' ? 'bg-rose-600 text-white' : risk.riskLevel === 'Yellow' ? 'bg-amber-400 text-slate-900' : 'bg-emerald-600 text-white'}`}>
-                                {risk.riskLevel.toUpperCase()}
+                              <span className={`px-7 py-3 rounded-full text-xs font-black tracking-widest uppercase shadow-md ${
+                                risk.riskLevel === 'Red' ? 'bg-[#dc2626] text-white' : 
+                                risk.riskLevel === 'Yellow' ? 'bg-[#f59e0b] text-white' : 
+                                'bg-[#059669] text-white'
+                              }`}>
+                                {risk.riskLevel}
                               </span>
                             </td>
                           </tr>
@@ -366,28 +419,74 @@ const App: React.FC = () => {
               </div>
             )}
           </div>
+        ) : (
+          /* Initial Empty State */
+          <div className="flex flex-col items-center justify-center py-48 space-y-10 text-center animate-in fade-in duration-1000">
+            <div className="bg-white p-16 rounded-[60px] border-2 border-dashed border-slate-200 shadow-sm relative group cursor-pointer hover:border-[#0054a6]/50 transition-all">
+              <div className="absolute inset-0 bg-blue-50/0 group-hover:bg-blue-50/50 rounded-[60px] transition-all"></div>
+              <FileUp className="w-24 h-24 text-slate-200 mx-auto mb-10 group-hover:text-[#0054a6]/30 transition-all" />
+              <h3 className="text-3xl font-black text-slate-800">분석 데이터를 기다리고 있습니다</h3>
+              <p className="text-slate-400 max-w-md mx-auto mt-4 text-lg font-medium">
+                표준 DTG 운행기록 파일을 업로드하여<br/>기관 전수 분석 및 안전 경영 진단을 시작하십시오.
+              </p>
+            </div>
+            <div className="flex gap-8 text-xs font-black text-slate-400 uppercase tracking-widest">
+               <div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-300" /> TS 표준 가중치 적용</div>
+               <div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-300" /> 개인정보 익명화 처리</div>
+               <div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-300" /> ESG 탄소 지수 산출</div>
+            </div>
+          </div>
         )}
       </main>
 
-      <footer className="bg-slate-950 text-white py-24 px-12 mt-32 border-t border-indigo-900/30">
-        <div className="max-w-[1600px] mx-auto grid md:grid-cols-2 gap-20 items-start">
-          <div className="space-y-8">
-            <div className="text-4xl font-black tracking-tighter">VibeCoding <span className="text-indigo-500">TS Active</span></div>
-            <p className="text-slate-400 font-bold text-xl leading-relaxed report-font italic">"바이브코딩은 한국교통안전공단(TS)과의 기술 협력을 통해 데이터 기반의 능동적 운전 습관 교정을 선도합니다."</p>
-            <div className="flex gap-10">
-              <div className="bg-white/5 p-5 rounded-3xl border border-white/10 flex items-center gap-3"><ShieldCheck className="text-emerald-500 w-6 h-6" /><span className="text-[10px] font-black uppercase tracking-widest">TS Compliance Certified</span></div>
-              <div className="bg-white/5 p-5 rounded-3xl border border-white/10 flex items-center gap-3"><Building2 className="text-emerald-500 w-6 h-6" /><span className="text-[10px] font-black uppercase tracking-widest">Public Safety Partner</span></div>
+      {/* Modern Public Sector Footer */}
+      <footer className="bg-[#0f172a] text-white py-24 px-12 border-t border-white/5">
+        <div className="max-w-[1440px] mx-auto grid md:grid-cols-2 gap-24">
+          <div className="space-y-10">
+            <div className="flex items-center gap-4">
+              <div className="bg-[#0054a6] p-3 rounded-2xl"><ShieldCheck className="text-white w-7 h-7" /></div>
+              <span className="text-3xl font-black tracking-tighter">VibeCoding <span className="text-blue-500">SafeDrive</span></span>
+            </div>
+            <p className="text-slate-400 font-medium text-lg leading-relaxed max-w-xl">
+              본 분석 시스템은 한국교통안전공단(TS)의 기술 자문을 바탕으로 설계되었으며,<br/>
+              운행 데이터 분석을 통한 안전 문화 정착과 공공 부문의 ESG 경영 가치 실현을 목표로 합니다.
+            </p>
+            <div className="flex gap-6">
+              <div className="bg-white/5 px-6 py-3 rounded-2xl text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] border border-white/10 shadow-sm">TS Compliance V4</div>
+              <div className="bg-white/5 px-6 py-3 rounded-2xl text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] border border-white/10 shadow-sm">Enterprise Governance</div>
             </div>
           </div>
-          <div className="flex justify-end gap-24 text-[10px] font-black text-slate-500 uppercase tracking-[0.4em]">
-             <div className="space-y-6"><div className="text-white border-b-2 border-indigo-500 pb-2 mb-4">TS Standards</div><div>Safety Assessment</div><div>Behavior Mapping</div></div>
-             <div className="space-y-6"><div className="text-white border-b-2 border-indigo-500 pb-2 mb-4">Resources</div><div>Regulatory Guide</div><div>API Archive</div></div>
+          <div className="grid grid-cols-2 gap-16">
+            <div className="space-y-8">
+              <h5 className="text-[12px] font-black text-white uppercase tracking-[0.3em] border-b border-white/10 pb-4">Core Platform</h5>
+              <ul className="text-sm font-bold text-slate-500 space-y-5">
+                <li className="hover:text-blue-400 cursor-pointer transition-colors flex items-center gap-2"><ChevronRight className="w-3.5 h-3.5" /> Safety Diagnostics</li>
+                <li className="hover:text-blue-400 cursor-pointer transition-colors flex items-center gap-2"><ChevronRight className="w-3.5 h-3.5" /> Environmental ESG</li>
+                <li className="hover:text-blue-400 cursor-pointer transition-colors flex items-center gap-2"><ChevronRight className="w-3.5 h-3.5" /> Institutional Support</li>
+              </ul>
+            </div>
+            <div className="space-y-8">
+              <h5 className="text-[12px] font-black text-white uppercase tracking-[0.3em] border-b border-white/10 pb-4">Information</h5>
+              <ul className="text-sm font-bold text-slate-500 space-y-5">
+                <li className="hover:text-blue-400 cursor-pointer transition-colors flex items-center gap-2"><ChevronRight className="w-3.5 h-3.5" /> Privacy Policy</li>
+                <li className="hover:text-blue-400 cursor-pointer transition-colors flex items-center gap-2"><ChevronRight className="w-3.5 h-3.5" /> TS Partnership</li>
+                <li className="hover:text-blue-400 cursor-pointer transition-colors flex items-center gap-2"><ChevronRight className="w-3.5 h-3.5" /> Tech Documentation</li>
+              </ul>
+            </div>
           </div>
         </div>
-        <div className="max-w-[1600px] mx-auto mt-24 pt-12 border-t border-white/5 text-center text-[9px] font-black text-slate-700 tracking-[0.6em] uppercase">© 2026 VibeCoding Global Inc. Powered by Gemini AI & TS Data Architecture.</div>
+        <div className="max-w-[1440px] mx-auto mt-24 pt-12 border-t border-white/5 text-center text-[11px] font-extrabold text-slate-700 uppercase tracking-[0.5em]">
+          © 2026 VibeCoding SafeDrive Global. All data encrypted by Institutional Standards.
+        </div>
       </footer>
     </div>
   );
 };
+
+const QuoteIcon = (props: any) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path d="M14.017 21L14.017 18C14.017 16.8954 14.9124 16 16.017 16H19.017C19.5693 16 20.017 15.5523 20.017 15V9C20.017 8.44772 19.5693 8 19.017 8H16.017C15.4647 8 15.017 8.44772 15.017 9V12C15.017 12.5523 14.5693 13 14.017 13H12.017C11.4647 13 11.017 12.5523 11.017 12V9C11.017 7.34315 12.3601 6 14.017 6H19.017C20.6739 6 22.017 7.34315 22.017 9V15C22.017 18.3137 19.3307 21 16.017 21H14.017ZM5.017 21L5.017 18C5.017 16.8954 5.91243 16 7.017 16H10.017C10.5693 16 11.017 15.5523 11.017 15V9C11.017 8.44772 10.5693 8 10.017 8H7.017C6.46472 8 6.017 8.44772 6.017 9V12C6.017 12.5523 5.56929 13 5.017 13H3.017C2.46472 13 2.017 12.5523 2.017 12V9C2.017 7.34315 3.36015 6 5.017 6H10.017C11.6739 6 13.017 7.34315 13.017 9V15C13.017 18.3137 10.3307 21 7.017 21H5.017Z" />
+  </svg>
+);
 
 export default App;
