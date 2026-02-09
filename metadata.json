@@ -1,0 +1,5 @@
+{
+  "name": "VibeCoding Driving Safety & Economy Analyst",
+  "description": "An advanced dashboard for analyzing 11 key dangerous driving behaviors, calculating risk scores, and simulating fuel cost and CO2 reduction from DTG data.",
+  "requestFramePermissions": []
+}
